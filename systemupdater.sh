@@ -29,6 +29,30 @@ separator() {
     esac
 }
 
+run_apt() {
+    local label=$1
+    local ok_message=$2
+    local fail_message=$3
+    shift 3
+    local log
+    log=$(mktemp)
+    if ! sudo apt -o APT::Cmd::disable-script-warning=true "$@" 2>&1 | tee "$log"; then
+        report fail "$label"
+        separator fail "$fail_message"
+        rm -f "$log"
+        exit 1
+    fi
+    if grep -qE '^E:|^Err:|Failed to fetch' "$log"; then
+        report fail "$label"
+        separator fail "$fail_message"
+        rm -f "$log"
+        exit 1
+    fi
+    report ok "$label"
+    separator ok "$ok_message"
+    rm -f "$log"
+}
+
 run_step() {
     local label=$1
     local ok_message=$2
@@ -44,26 +68,8 @@ run_step() {
     fi
 }
 
-run_upgrade() {
-    if ! sudo apt -y upgrade 2>&1; then
-        return 1
-    fi
-    if grep -q '^E:' /var/log/apt/term.log 2>/dev/null; then
-        return 1
-    fi
-    return 0
-}
-
-run_step "Package list updated" "The package list has been updated." "The package list was not updated." sudo apt update
-
-if run_upgrade; then
-    report ok "System upgraded"
-    separator ok "The system has been updated."
-else
-    report fail "System upgrade"
-    separator fail "The system was not updated."
-    exit 1
-fi
+run_apt "Package list updated" "The package list has been updated." "The package list was not updated." update
+run_apt "System upgraded" "The system has been updated." "The system was not updated." -y upgrade
 
 run_step "System cleaned" "The system has been cleaned." "The system was not cleaned." sudo apt autoclean
 run_step "Unnecessary packages removed" "The unnecessary packages have been removed." "The unnecessary packages have not been removed." sudo apt autoremove -y
