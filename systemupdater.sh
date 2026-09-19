@@ -36,13 +36,37 @@ run_apt() {
     shift 3
     local log
     log=$(mktemp)
-    if ! sudo apt -o APT::Cmd::disable-script-warning=true "$@" 2>&1 | tee "$log"; then
+    # Piping apt through `tee` makes stdout a pipe, not a TTY, so apt
+    # disables its download progress bar (e.g. "22% [2 brave-browser ...]").
+    # When we're interactive, wrap apt in `script` to give it a pty while
+    # still logging output for error detection.
+    # NB: sudo must stay OUTSIDE script. sudo uses per-tty timestamps by
+    # default (tty_tickets), so `script -c "sudo apt ..."` would authenticate
+    # on a fresh pty every time and re-prompt for a password. With
+    # `sudo script -c "apt ..."` auth happens on the original tty, reusing
+    # the initial `sudo -v` credential.
+    local apt_failed=0
+    if [ -t 1 ] && command -v script >/dev/null 2>&1; then
+        local cmd
+        printf -v cmd '%q ' apt -o APT::Cmd::disable-script-warning=true "$@"
+        if ! sudo script -qec "$cmd" /dev/null 2>&1 | tee "$log"; then
+            apt_failed=1
+        fi
+    else
+        if ! sudo apt -o APT::Cmd::disable-script-warning=true "$@" 2>&1 | tee "$log"; then
+            apt_failed=1
+        fi
+    fi
+    if [ "$apt_failed" -ne 0 ]; then
         report fail "$label"
         separator fail "$fail_message"
         rm -f "$log"
         exit 1
     fi
-    if grep -qE '^E:|^Err:|Failed to fetch' "$log"; then
+    # NB: pty output uses \r for progress-bar redraws, so translate them to
+    # newlines before grepping, otherwise an "Err:" following a \r on the
+    # same line would not match ^Err:.
+    if tr '\r' '\n' < "$log" | grep -qE '^E:|^Err:|Failed to fetch'; then
         report fail "$label"
         separator fail "$fail_message"
         rm -f "$log"
