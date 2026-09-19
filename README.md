@@ -6,8 +6,8 @@ cache files — with clear, colored feedback for every step.
 
 ## Requirements
 
-- Debian, Ubuntu, or a derivative using `apt`
-- `sudo` access
+- Debian, or a distro using `apt`
+- `sudo` access (Intuitively)
 
 ## Usage
 
@@ -24,7 +24,3 @@ reuse the cached credential.
 sudo install -m 0755 systemupdater.sh /usr/local/bin/systemupdater
 systemupdater
 ```
-
-## License
-
-Free to use and modify.
